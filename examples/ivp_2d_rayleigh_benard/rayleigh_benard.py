@@ -1,13 +1,12 @@
 """2D Rayleigh-Benard on GPU."""
 
 import numpy as np
-import cupy as cp
 import dedalus.public as d3
 import logging
 logger = logging.getLogger(__name__)
 
 
-def run(Nx, Nz, timestep, iterations, dtype, outputs=False, stats=False):
+def run(Nx, Nz, timestep, iterations, dtype, array_namespace, outputs=False, stats=False):
 
     # Fixed parameteres
     Lx, Lz = 4, 1
@@ -18,7 +17,7 @@ def run(Nx, Nz, timestep, iterations, dtype, outputs=False, stats=False):
 
     # Bases
     coords = d3.CartesianCoordinates('x', 'z')
-    dist = d3.Distributor(coords, dtype=dtype, array_namespace=cp)
+    dist = d3.Distributor(coords, dtype=dtype, array_namespace=array_namespace)
     xbasis = d3.RealFourier(coords['x'], size=Nx, bounds=(0, Lx), dealias=dealias)
     zbasis = d3.ChebyshevT(coords['z'], size=Nz, bounds=(0, Lz), dealias=dealias)
 
@@ -47,8 +46,8 @@ def run(Nx, Nz, timestep, iterations, dtype, outputs=False, stats=False):
     # First-order form: "lap(f)" becomes "div(grad_f)"
     problem = d3.IVP([p, b, u, tau_p, tau_b1, tau_b2, tau_u1, tau_u2], namespace=locals())
     problem.add_equation("trace(grad_u) + tau_p = 0")
-    problem.add_equation("dt(b) - kappa*div(grad_b) + lift(tau_b2) = - u@grad(b)")
-    problem.add_equation("dt(u) - nu*div(grad_u) + grad(p) - b*ez + lift(tau_u2) = - u@grad(u)")
+    problem.add_equation("dt(b) - kappa*div(grad_b) + lift(tau_b2) = - (u@grad(b))")
+    problem.add_equation("dt(u) - nu*div(grad_u) + grad(p) - b*ez + lift(tau_u2) = - (u@grad(u))")
     problem.add_equation("b(z=0) = Lz")
     problem.add_equation("u(z=0) = 0")
     problem.add_equation("b(z=Lz) = 0")
@@ -90,10 +89,17 @@ def run(Nx, Nz, timestep, iterations, dtype, outputs=False, stats=False):
         logger.error('Exception raised, triggering end of main loop.')
         raise
     finally:
-        return solver.log_stats()
+        stats = solver.log_stats()
+    return stats
 
 
 if __name__ == "__main__":
+
+    try:
+        import cupy as cp
+        array_namespace = cp
+    except ImportError:
+        array_namespace = np
 
     # Parameters
     Nx = 256
@@ -104,4 +110,4 @@ if __name__ == "__main__":
     outputs = False
     stats = True
 
-    run(Nx, Nz, timestep, iterations, dtype, outputs=outputs, stats=stats)
+    run(Nx, Nz, timestep, iterations, dtype, array_namespace, outputs=outputs, stats=stats)
